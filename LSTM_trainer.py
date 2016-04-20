@@ -11,9 +11,6 @@ from title_encoder import EncodeTitles
 from keras.models import Sequential
 from keras.layers.core import Dense, Activation, Dropout
 from keras.layers.recurrent import LSTM
-from theano import config as theanoconfig
-
-theanoconfig.mode='FAST_RUN'
    
 def GetSamplesPerEpoch(training_data, batch_size):
     usable_total = 0
@@ -66,13 +63,13 @@ def BatchGenerator(training_data,batch_size):
             pointers[array_index] = endval
         #When you fall off the end of the inner while loop the outer loop restarts 
         #and everything is set back up again
-        print('Generator resetting! This should sync with the end of an epoch!')
+        print('\n\nGenerator resetting! This will take a couple of seconds...\n')
         
 #Reminder, dimensions go (samples,timesteps,characters)
 BATCH_SIZE = 32
 MAX_LEN = 12
 
-training_data, char_to_index, index_to_char, end_index = EncodeTitles(sys.argv[1],MAX_LEN)
+training_data, char_to_index, index_to_char, end_index, first_char_probs = EncodeTitles(sys.argv[1],MAX_LEN)
 
 generator = BatchGenerator(training_data,BATCH_SIZE)
 samples_per_epoch = GetSamplesPerEpoch(training_data,BATCH_SIZE)
@@ -80,14 +77,15 @@ num_chars = training_data[0].shape[2]
 
 model = Sequential()
 model.add(LSTM(128, return_sequences=True,input_dim=num_chars))
+model.add(LSTM(512, return_sequences=True))
 model.add(LSTM(128, return_sequences=False))
 model.add(Dense(num_chars))
 model.add(Activation('softmax'))
 
-model.compile(loss='categorical_crossentropy', optimizer='Adam', metrics=["accuracy"])
+model.compile(loss='categorical_crossentropy', optimizer='Adam')
 while True:
     model.fit_generator(generator,samples_per_epoch=65536,nb_epoch=1)
-    generated = random.choice(char_to_index.keys())
+    generated = index_to_char[ChooseCharacter(first_char_probs)]
     #Now to test a prediction from it
     while True:
         input = np.zeros((1,min(len(generated),MAX_LEN),num_chars),dtype=np.bool)

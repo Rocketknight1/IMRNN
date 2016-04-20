@@ -80,12 +80,18 @@ def MakeTrainingData(titles,char_to_index,end_index,max_len):
         training_cases[i] = ListToNumpy(training_cases[i],end_index)
     return training_cases
 
-def MakeFirstLetterDistribution(titles):
-	firstletters = [title[0] for title in titles]
-	total_titles = len(titles)
-	lettercounts = dict(Counter(firstletters))
-	letterprobs = {key : val/total_titles for key,val in lettercounts.items()}
-	return letterprobs
+def MakeFirstCharDistribution(titles,index_to_char):
+    firstletters = [title[0] for title in titles]
+    total_titles = len(titles)
+    charcounts = dict(Counter(firstletters))
+    charprobs = {key : val/total_titles for key,val in charcounts.items()}
+    probarray = []
+    for i in range(max(index_to_char.keys())+1):
+        if index_to_char[i] in charprobs:
+            probarray.append(charprobs[index_to_char[i]])
+        else:
+            probarray.append(0)
+    return np.array(probarray,dtype=np.float64)
 
 
 def EncodeTitles(file,max_len):
@@ -98,8 +104,8 @@ def EncodeTitles(file,max_len):
 	end_index = max(index_to_char.keys())+1
 	
 	titles = ExtractTitles(file,allowedchars) #Note case is ignored
-	firstletterdistribution = MakeFirstLetterDistribution(titles)
+	first_char_probs = MakeFirstCharDistribution(titles, index_to_char)
     
 	training = MakeTrainingData(titles,char_to_index,end_index,max_len)
 	
-	return (training,char_to_index,index_to_char,end_index)
+	return (training,char_to_index,index_to_char,end_index,first_char_probs)
