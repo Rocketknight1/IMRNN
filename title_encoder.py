@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 
 import pdb,sys
-from title_extractor import ExtractTitles
 import numpy as np
 import pickle
+from collections import Counter
 
 #We vectorize titles with a sliding-window strategy
 #with a minimum length of 1 character and a maximum length
@@ -20,6 +20,23 @@ import pickle
 #2nd dimension is samples
 #3rd dimension is timesteps
 #4th dimension is characters
+
+def ExtractTitles(file,allowedchars):
+	title_list = []
+	rejectlist = []
+	f = open(file,encoding='latin_1')
+	for line in f:
+		if line[0]=='#':
+			try:
+				title = line[2:line.index('(')]
+				title = title.rstrip('" ').lstrip('''#" ''').lower().rstrip()
+			except:
+				pdb.set_trace()
+			if title and all([char in allowedchars for char in list(title)]):
+				title_list.append(title)
+			else:
+				rejectlist.append(title) #this is just for debugging
+	return title_list
 
 def VectorizeTitle(title,char_to_index,end_index,max_len):
 	#Returns all training vectors that can be produced from a single title
@@ -38,7 +55,7 @@ def VectorizeTitle(title,char_to_index,end_index,max_len):
 
 def OneHot(vector,end_index):
 	#returns a one-hot encoding of a characters vector with dimensions (num_timesteps,size_of_charset)
-	output = np.zeros((len(vector),end_index+1),dtype=np.uint8)
+	output = np.zeros((len(vector),end_index+1),dtype=np.bool)
 	for i in range(len(vector)):
 		output[i,vector[i]]=1
 	return output
@@ -48,7 +65,7 @@ def ListToNumpy(sample_list,end_index):
     #Take a list of vectorized titles and return a 3D numpy array suitable for training from
     num_timesteps = sample_list[0].shape[0]
     assert all([sample.shape[0]==num_timesteps for sample in sample_list])
-    output = np.zeros((len(sample_list),num_timesteps,end_index+1),dtype=np.uint8)
+    output = np.zeros((len(sample_list),num_timesteps,end_index+1),dtype=np.bool)
     for i in range(len(sample_list)):
         output[i,:,:] = sample_list[i]
     return output
@@ -62,17 +79,27 @@ def MakeTrainingData(titles,char_to_index,end_index,max_len):
     for i in range(len(training_cases)):
         training_cases[i] = ListToNumpy(training_cases[i],end_index)
     return training_cases
-		
-MAX_LEN = 12
 
-titles = ExtractTitles(sys.argv[1]) #Note case is ignored
-titlestring = ''.join(titles)
-titlechars = set(titlestring)
+def MakeFirstLetterDistribution(titles):
+	firstletters = [title[0] for title in titles]
+	total_titles = len(titles)
+	lettercounts = dict(Counter(firstletters))
+	letterprobs = {key : val/total_titles for key,val in lettercounts.items()}
+	return letterprobs
 
-char_to_index = {ch:i for i,ch in enumerate(titlechars)}
-index_to_char = {i:ch for i,ch in enumerate(titlechars)}
 
-end_index = max(index_to_char.keys())+1
-
-training = MakeTrainingData(titles,char_to_index,end_index,MAX_LEN)
-np.savez_compressed('training.npz',*training)
+def EncodeTitles(file,max_len):
+	#oh god here comes the inelegant part
+	allowedchars = set(['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','0','1','2','3','4','5','6','7','8','9','.',';',':','!','?','-','&',',',' ','"','\''])
+	
+	char_to_index = {ch:i for i,ch in enumerate(allowedchars)}
+	index_to_char = {i:ch for i,ch in enumerate(allowedchars)}
+	
+	end_index = max(index_to_char.keys())+1
+	
+	titles = ExtractTitles(file,allowedchars) #Note case is ignored
+	firstletterdistribution = MakeFirstLetterDistribution(titles)
+    
+	training = MakeTrainingData(titles,char_to_index,end_index,max_len)
+	
+	return (training,char_to_index,index_to_char,end_index)

@@ -3,30 +3,34 @@
 import numpy as np
 import pdb
 import random
+import time
+import sys
+
+from title_encoder import EncodeTitles
 
 from keras.models import Sequential
 from keras.layers.core import Dense, Activation, Dropout
 from keras.layers.recurrent import LSTM
+from theano import config as theanoconfig
 
-def LoadNPZ(file):
-    npz_input = np.load(file)
-    i = 0
-    training_data = []
-    while True:
-        try:
-            training_data.append(npz_input['arr_{}'.format(i)])
-            i+=1
-        except:
-            return training_data #This means we're done
+theanoconfig.mode='FAST_RUN'
    
 def GetSamplesPerEpoch(training_data, batch_size):
+    usable_total = 0
     total = 0
     for array in training_data:
-        total+=(len(array) // batch_size) * batch_size
+        usable_total+=(len(array) // batch_size) * batch_size
+        total+=len(array)
+    print("{} samples total, {} per epoch.".format(total,usable_total))
     return total
 
 def ChooseCharacter(prediction):
-    
+    #Softmax layers output probabilities
+    #np.random.multinomial selects one based on these probabilities
+    #setting that cell to 1 and the others to 0
+    #np.argmax returns the index of that cell
+    #and so the index of the character we want
+    return np.argmax(np.random.multinomial(1,prediction))
     
 def BatchGenerator(training_data,batch_size):
     #The job of the batch generator is a little tricky
@@ -64,11 +68,11 @@ def BatchGenerator(training_data,batch_size):
         #and everything is set back up again
         print('Generator resetting! This should sync with the end of an epoch!')
         
-
 #Reminder, dimensions go (samples,timesteps,characters)
 BATCH_SIZE = 32
 MAX_LEN = 12
-training_data = LoadNPZ('training.npz')
+
+training_data, char_to_index, index_to_char, end_index = EncodeTitles(sys.argv[1],MAX_LEN)
 
 generator = BatchGenerator(training_data,BATCH_SIZE)
 samples_per_epoch = GetSamplesPerEpoch(training_data,BATCH_SIZE)
@@ -76,22 +80,28 @@ num_chars = training_data[0].shape[2]
 
 model = Sequential()
 model.add(LSTM(128, return_sequences=True,input_dim=num_chars))
-model.add(LSTM(128, return_sequences=True))
 model.add(LSTM(128, return_sequences=False))
 model.add(Dense(num_chars))
 model.add(Activation('softmax'))
 
-model.compile(loss='categorical_crossentropy', optimizer='RMSprop')
+model.compile(loss='categorical_crossentropy', optimizer='Adam', metrics=["accuracy"])
 while True:
-    model.fit_generator(generator,samples_per_epoch,show_accuracy=True,nb_epoch=1)
+    model.fit_generator(generator,samples_per_epoch=65536,nb_epoch=1)
+    generated = random.choice(char_to_index.keys())
     #Now to test a prediction from it
     while True:
-        generated = 'a'
-        input = np.zeros(1,min(len(generated),MAX_LEN),num_chars)
+        input = np.zeros((1,min(len(generated),MAX_LEN),num_chars),dtype=np.bool)
+        input_index_offset = max(0,len(generated)-MAX_LEN)
         for i in range(max(0,len(generated)-MAX_LEN),len(generated)):
-            input[0,i,char_to_index[generated[i]]]=1
-        outputchar = model.predict(input,batch_size=1,verbose=0)
-        
+            input[0,i-input_index_offset,char_to_index[generated[i]]]=1
+        prediction = model.predict(input,batch_size=1,verbose=0)
+        nextindex = ChooseCharacter(prediction[0])
+        if nextindex == end_index:
+            break
+        nextchar = index_to_char[nextindex]
+        generated = generated + nextchar
+    
+    print('Title: {}'.format(generated.title()))
             
     
     
