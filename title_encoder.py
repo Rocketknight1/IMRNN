@@ -3,6 +3,7 @@
 import pdb,sys
 from title_extractor import ExtractTitles
 import numpy as np
+import pickle
 
 #We vectorize titles with a sliding-window strategy
 #with a minimum length of 1 character and a maximum length
@@ -13,6 +14,12 @@ import numpy as np
 #end of the title. The END character uses its own index (i.e. if the
 #characters in the titles use indices from 0 to n, then the END character
 #uses index n+1).
+
+#We generate a 4-dimensional array as output
+#1st dimension is timestep length - 2
+#2nd dimension is samples
+#3rd dimension is timesteps
+#4th dimension is characters
 
 def VectorizeTitle(title,char_to_index,end_index,max_len):
 	#Returns all training vectors that can be produced from a single title
@@ -36,24 +43,25 @@ def OneHot(vector,end_index):
 		output[i,vector[i]]=1
 	return output
 	
-def ListToNumpy(sample_list,num_timesteps,end_index):
+    
+def ListToNumpy(sample_list,end_index):
     #Take a list of vectorized titles and return a 3D numpy array suitable for training from
-	output = np.zeros((len(sample_list),num_timesteps,end_index+1),dtype=np.uint8)
-	for i in range(len(sample_list)):
-		output[i,:,:] = sample_list[i]
-	return output
+    num_timesteps = sample_list[0].shape[0]
+    assert all([sample.shape[0]==num_timesteps for sample in sample_list])
+    output = np.zeros((len(sample_list),num_timesteps,end_index+1),dtype=np.uint8)
+    for i in range(len(sample_list)):
+        output[i,:,:] = sample_list[i]
+    return output
 	
 def MakeTrainingData(titles,char_to_index,end_index,max_len):
-    training_cases_by_length = dict()
-    for length in range(2,max_len+1):
-        training_cases_by_length[str(length)]=[]
+    training_cases = [[] for i in range(max_len-1)]
     for title in titles:
         title_vectors = VectorizeTitle(title,char_to_index,end_index,max_len)
         for vector in title_vectors:
-            training_cases_by_length[str(len(vector))].append(OneHot(vector,end_index)) 
-    for length in range(2,max_len+1):
-        training_cases_by_length[str(length)] = ListToNumpy(training_cases_by_length[str(length)],length,end_index)
-    return training_cases_by_length
+            training_cases[len(vector)-2].append(OneHot(vector,end_index))
+    for i in range(len(training_cases)):
+        training_cases[i] = ListToNumpy(training_cases[i],end_index)
+    return training_cases
 		
 MAX_LEN = 12
 
@@ -67,12 +75,4 @@ index_to_char = {i:ch for i,ch in enumerate(titlechars)}
 end_index = max(index_to_char.keys())+1
 
 training = MakeTrainingData(titles,char_to_index,end_index,MAX_LEN)
-
-np.savez_compressed('training.npz',**training)
-
-
-
-
-    
-    
-
+np.savez_compressed('training.npz',*training)
