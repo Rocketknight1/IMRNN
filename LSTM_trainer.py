@@ -6,7 +6,7 @@ import random
 import time
 import sys
 
-from title_encoder import EncodeTitles
+from movie_parsing import MakeTitleChopList,MakeFirstCharDistribution
 
 from keras.models import Sequential
 from keras.layers.core import Dense, Activation, Dropout
@@ -34,8 +34,22 @@ def ChooseCharacter(prediction):
     prediction = prediction/sum(prediction) 
     
     return np.argmax(np.random.multinomial(1,prediction))
-    
-def BatchGenerator(training_data,batch_size):
+
+def EncodeCharIndicesToLabelMatrix(char_indices,end_index):
+    label_matrix = np.zeros((len(char_indices),end_index+1),dtype=np.bool)
+    for i in range(len(char_indices)):
+        label_matrix[i,char_indices[i]] = 1
+    return label_matrix
+
+def EncodeCharVecsToTrainingArray(charvecs,end_index):
+    num_timesteps = len(charvecs[0])
+    output = np.zeros((len(charvecs),num_timesteps,end_index+1),dtype=np.bool)
+    for i in range(len(charvecs)):
+        for timestep in range(num_timesteps):
+            output[i,timestep,charvecs[i]]=1
+    return output
+
+def BatchGenerator(training_data,batch_size,char_to_index,end_index):
     #The job of the batch generator is a little tricky
     #We want it to return batches that come from the same training array, since 
     #all training cases in the same array have the same length, and we can't mix lengths
@@ -52,19 +66,19 @@ def BatchGenerator(training_data,batch_size):
     #Increment the pointer on that array by batch_size.
     while True:
         selections = []
-        pointers = [0 for array in training_data]
+        pointers = [0 for length_group in training_data]
         for i in range(len(training_data)):
-            np.random.shuffle(training_data[i])
-            selections.extend([i for x in range(training_data[i].shape[0]//batch_size)])
+            random.shuffle(training_data[i])
+            selections.extend([i for x in range(len(training_data[i])//batch_size)])
         
         random.shuffle(selections) # so we take in a random order
         while len(selections) > 0:
             array_index = selections.pop()
             startval = pointers[array_index]
             endval = startval + batch_size
-            batch = training_data[array_index][startval:endval,:,:]
-            features = batch[:,:-1,:]
-            labels = batch[:,-1,:]
+            batch = training_data[array_index][startval:endval]
+            features = EncodeCharVecsToTrainingArray([charvec[:-1] for charvec in batch],end_index)
+            labels = EncodeCharIndicesToLabelMatrix([charvec[-1] for charvec in batch],end_index)
             yield (features,labels)
             pointers[array_index] = endval
         #When you fall off the end of the inner while loop the outer loop restarts 
@@ -74,16 +88,26 @@ def BatchGenerator(training_data,batch_size):
 #Reminder, dimensions go (samples,timesteps,characters)
 BATCH_SIZE = 32
 MAX_LEN = 12
+TITLE_FILE = 'languages_crop'
+TAGLINES_FILE = 'taglines_crop'
+#oh god here comes the inelegant part
+ALLOWED_CHARS = set(['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z','0','1','2','3','4','5','6','7','8','9','.',';',':','!','?','-','&',',',' ','"',"'"])
+#no-one saw that okay
 
-training_data, char_to_index, index_to_char, end_index, first_char_probs = EncodeTitles(sys.argv[1],MAX_LEN)
+char_to_index = {ch:i for i,ch in enumerate(ALLOWED_CHARS)}
+index_to_char = {i:ch for i,ch in enumerate(ALLOWED_CHARS)}	
+end_index = max(index_to_char.keys())+1
 
-generator = BatchGenerator(training_data,BATCH_SIZE)
-samples_per_epoch = GetSamplesPerEpoch(training_data,BATCH_SIZE)
-num_chars = training_data[0].shape[2]
+training_titles, titles = MakeTitleChopList(MAX_LEN,TITLE_FILE,ALLOWED_CHARS,char_to_index)
+
+first_char_probs = MakeFirstCharDistribution(titles,index_to_char)
+generator = BatchGenerator(training_titles,BATCH_SIZE,char_to_index,end_index)
+samples_per_epoch = GetSamplesPerEpoch(training_titles,BATCH_SIZE)
+num_chars = end_index + 1
 
 model = Sequential()
 model.add(LSTM(128, return_sequences=True,input_dim=num_chars))
-model.add(LSTM(512, return_sequences=True))
+#model.add(LSTM(512, return_sequences=True))
 model.add(LSTM(128, return_sequences=False))
 model.add(Dense(num_chars))
 model.add(Activation('softmax'))
