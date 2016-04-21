@@ -27,6 +27,12 @@ def ChooseCharacter(prediction):
     #setting that cell to 1 and the others to 0
     #np.argmax returns the index of that cell
     #and so the index of the character we want
+    
+    #We also renormalize, even though softmax output should already be normalized.
+    #Softmax is in float32, however, and rounding errors can cause multinomial
+    #sampling to throw an error.
+    prediction = prediction/sum(prediction) 
+    
     return np.argmax(np.random.multinomial(1,prediction))
     
 def BatchGenerator(training_data,batch_size):
