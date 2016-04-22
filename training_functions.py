@@ -64,7 +64,6 @@ def BatchGenerator(training_data,batch_size,char_to_index,end_index):
         for i in range(len(training_data)):
             random.shuffle(training_data[i])
             selections.extend([i for x in range(len(training_data[i])//batch_size)])
-        
         random.shuffle(selections) # so we take in a random order
         #remember a selection of x means training data of length x + 2
         while len(selections) > 0:
@@ -92,3 +91,37 @@ def OnlineTaglineGenerator(training_data,char_to_index,end_index):
             tagline_label = tagline[:,-1,:]
             yield [[movie_input,tagline_input],tagline_label]
         print('\n\nGenerator resetting! This will take a couple of seconds...\n')
+        
+def BatchedTaglineGenerator(nested_training_data,batch_size,char_to_index,end_index):
+    #First we do a bit of flattening
+    training_data = []
+    for title_length_bin in nested_training_data:
+        for tagline_chop_length_bin in title_length_bin:
+            training_data.append[tagline_chop_length_bin]
+    while True:
+        selections = []
+        pointers = [0 for length_group in training_data]
+        for i in range(len(training_data)):
+            random.shuffle(training_data[i])
+            selections.extend([i for x in range(len(training_data[i])//batch_size)])
+        random.shuffle(selections) # so we take in a random order
+        #remember a selection of x means training data of length x + 2
+        while len(selections) > 0:
+            array_index = selections.pop()
+            startval = pointers[array_index]
+            endval = startval + batch_size
+            batch = zip(training_data[array_index][startval:endval,:])
+            #after zip batch[0] is a title vector and batch[1] is a tagline vector
+            encoded_titles = EncodeCharVecsToTrainingArray(batch[0],end_index)
+            encoded_taglines = EncodeCharVecsToTrainingArray(batch[1],end_index)
+            tagline_features = encoded_taglines[:,:-1,:]
+            tagline_labels = encoded_taglines[:,-1,:]
+            pdb.set_trace()
+            yield ([encoded_titles,tagline_features],tagline_labels)
+            pointers[array_index] = endval
+        #When you fall off the end of the inner while loop the outer loop restarts 
+        #and everything is set back up again
+        print('\n\nGenerator resetting! This will take a couple of seconds...\n')
+    
+        
+    

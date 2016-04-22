@@ -92,18 +92,42 @@ def MakeTaglineTraining(max_len,titles_file,taglines_file,allowed_chars,char_to_
     for title,taglines in taglines_dict.items():
         encoded_title = [char_to_index[char] for char in title]
         for tagline in taglines:
-            chopped_tagline = ChopTitle(tagline,max_len,char_to_index,end_index)
+            chopped_tagline = ChopTitle(tagline,max_len,char_to_index,end_index,min_size=1)
             for chop in chopped_tagline:
                 training_cases.append((encoded_title,chop))
     return (training_cases, english_titles)
+
+def MakeBatchedTaglineTraining(max_len,titles_file,taglines_file,allowed_chars,char_to_index,end_index):
+    #For each title, make a training case consisting of
+    #(full_title,tagline[:n]), using a rolling window across the tagline as with titles.
+	english_titles = GetEnglishTitles(titles_file, allowed_chars)
+	
+	#Batching solution: Most titles are 30 characters or less. Therefore we can divide into batches as follows:
+	#6 Bins of width 5 can be used. For example, all titles 26-30 characters long will be a bin. Titles over 30 characters are truncated to 30.
+	#Within each bin, there will be 11 bins for different tagline lengths
+	
+	#The title bin chosen should be [(title_length+1)%5]. This will put lengths 0-5 in bin 0, 6-10 in bin 1 and so on.
+	#The tagline chop bin should be [chop_length-1] as 1 is the minimum chop length.
+	taglines_dict = ExtractTaglines(taglines_file,allowed_chars,english_titles)
+	training_cases = [[[] for i in range(12)] for j in range(6)]
+	for title,taglines in taglines_dict.items():
+		encoded_title = [char_to_index[char] for char in title][:30] #truncate to 30 chars if longer than that
+		for tagline in taglines:
+			chopped_tagline = ChopTitle(tagline,max_len,char_to_index,end_index,min_size=1)
+			for chop in chopped_tagline:
+				title_bin = (len(encoded_title)+1)%5
+				tagline_bin = len(chop)-1
+				training_cases[title_bin][tagline_bin].append((encoded_title,chop))
+	return (training_cases, english_titles)
+
                 
-def ChopTitle(title,max_len,char_to_index,end_index):
+def ChopTitle(title,max_len,char_to_index,end_index,min_size):
 	#Returns all training cases that can be produced from a single title
     training = []
     title_indices = [char_to_index[char] for char in title]
     title_indices.append(end_index)
     start_char = 0
-    target_char = 2
+    target_char = min_size
     while target_char <= len(title_indices):
         training.append(title_indices[start_char:target_char])
         target_char+=1
@@ -115,7 +139,7 @@ def MakeTitleTraining(max_len,titles_file,allowed_chars,char_to_index,end_index)
     titles = GetEnglishTitles(titles_file,allowed_chars)
     training_cases_by_length = [[] for i in range(max_len-1)]
     for title in titles:
-        chopped_title = ChopTitle(title,max_len,char_to_index,end_index)
+        chopped_title = ChopTitle(title,max_len,char_to_index,end_index,min_size=2)
         for chop in chopped_title:
             training_cases_by_length[len(chop)-2].append(chop)
     training_cases_by_length = [np.array(training_cases,dtype=np.uint8) for training_cases in training_cases_by_length]
