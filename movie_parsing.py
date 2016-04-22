@@ -54,50 +54,72 @@ def GetEnglishTitles(file,allowedchars):
 	return titles
 
 def ExtractTaglines(file,allowedchars,english_titles):
-	taglines = dict()
-	taglinecount = 0
-	entrycount = 0
-	rejectcount = 0
-	f = open(file,encoding="latin-1")
-	for line in f:
-		if line[0]=='#':
-			entrycount+=1
-			title = line[2:line.index('(')]
-			title = title.rstrip('" ').lstrip('''#" ''').lower().rstrip()
-			if title and all([char in allowedchars for char in list(title)]) and title in english_titles:
-				taglines[title]=[]
-			else:
-				rejectcount+=1
-				title = False
-		elif line[0]=='\t' and title:
-			taglines[title].append(line.lstrip().rstrip())
-			taglinecount+=1
-	print("Tagline_extractor: Got {} films with {} taglines".format(len(list(taglines.keys())),taglinecount))
-	print("Tagline_extractor: Rejected {} films.".format(rejectcount))
-	return taglines
-    
+    taglines = dict()
+    taglinecount = 0
+    entrycount = 0
+    rejectcount = 0
+    rejected_taglines = 0
+    f = open(file,encoding="latin-1")
+    for line in f:
+        if line[0]=='#':
+            entrycount+=1
+            title = line[2:line.index('(')]
+            title = title.rstrip('" ').lstrip('''#" ''').lower().rstrip()
+            if title and all([char in allowedchars for char in list(title)]) and title in english_titles:
+                taglines[title]=[]
+            else:
+                rejectcount+=1
+                title = False
+        elif line[0]=='\t' and title:
+            tagline = line.lstrip().rstrip().lstrip('" ').rstrip('" ').lower()
+            if all([char in allowedchars for char in list(tagline)]):
+                taglines[title].append(tagline)
+                taglinecount+=1
+            else:
+                rejected_taglines+=1
+    print("Tagline_extractor: Got {} films with {} taglines".format(len(list(taglines.keys())),taglinecount))
+    print("Tagline_extractor: Rejected {} films and {} taglines.".format(rejectcount,rejected_taglines))
+    return taglines
 
-def ChopTitle(title,max_len):
+def MakeTaglineTraining(max_len,titles_file,taglines_file,allowed_chars,char_to_index,end_index):
+    #For each title, make a training case consisting of
+    #(full_title,tagline[:n])
+    english_titles = GetEnglishTitles(titles_file, allowed_chars)
+    
+    #Initially let's try online learning to avoid the batching problem here
+    taglines_dict = ExtractTaglines(taglines_file,allowed_chars,english_titles)
+    training_cases = []
+    for title,taglines in taglines_dict.items():
+        encoded_title = [char_to_index[char] for char in title]
+        for tagline in taglines:
+            chopped_tagline = ChopTitle(tagline,max_len,char_to_index,end_index)
+            for chop in chopped_tagline:
+                training_cases.append((encoded_title,chop))
+    return (training_cases, english_titles)
+                
+def ChopTitle(title,max_len,char_to_index,end_index):
 	#Returns all training cases that can be produced from a single title
     training = []
+    title_indices = [char_to_index[char] for char in title]
+    title_indices.append(end_index)
     start_char = 0
     target_char = 2
-    while target_char <= len(title):
-        training.append(title[start_char:target_char])
+    while target_char <= len(title_indices):
+        training.append(title_indices[start_char:target_char])
         target_char+=1
         if target_char - start_char > max_len:
             start_char+=1
     return training
 	
-def MakeTitleChopList(max_len,titles_file,allowed_chars,char_to_index):
-	titles = GetEnglishTitles(titles_file,allowed_chars)
-	training_cases_by_length = [[] for i in range(max_len-1)]
-	for title in titles:
-		chopped_title = ChopTitle(title,max_len)
-		for chop in chopped_title:
-			training_cases_by_length[len(chop)-2].append([char_to_index[char] for char in chop])
-	
-	return training_cases_by_length, titles
+def MakeTitleTraining(max_len,titles_file,allowed_chars,char_to_index,end_index):
+    titles = GetEnglishTitles(titles_file,allowed_chars)
+    training_cases_by_length = [[] for i in range(max_len-1)]
+    for title in titles:
+        chopped_title = ChopTitle(title,max_len,char_to_index,end_index)
+        for chop in chopped_title:
+            training_cases_by_length[len(chop)-2].append(chop)
+    training_cases_by_length = [np.array(training_cases,dtype=np.uint8) for training_cases in training_cases_by_length]
+    return training_cases_by_length, titles
 
 def MakeFirstCharDistribution(titles,index_to_char):
     firstletters = [title[0] for title in titles]
