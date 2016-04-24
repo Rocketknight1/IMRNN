@@ -3,6 +3,9 @@ import pdb
 import random
 import time
 import sys
+from threading import Thread
+from queue import Queue
+from copy import deepcopy
 
 def GetSamplesPerEpoch(training_data, batch_size):
     usable_total = 0
@@ -43,7 +46,7 @@ def EncodeSingleCharVec(charvec,end_index):
     output[np.arange(num_timesteps),charvec]=1
     return output.reshape(1,num_timesteps,end_index+1)
 
-def BatchGenerator(training_data,batch_size,char_to_index,end_index):
+def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end_index,output_queue):
     #The job of the batch generator is a little tricky
     #We want it to return batches that come from the same training array, since 
     #all training cases in the same array have the same length, and we can't mix lengths
@@ -58,27 +61,30 @@ def BatchGenerator(training_data,batch_size,char_to_index,end_index):
     #3: Shuffle the selection list and repeatedly pop from it. Each time you pop an index, take batch_size
     #elements from the corresponding array, starting at the pointer, and yield them. 
     #Increment the pointer on that array by batch_size.
-    while True:
-        selections = []
-        pointers = [0 for length_group in training_data]
-        for i in range(len(training_data)):
-            random.shuffle(training_data[i])
-            selections.extend([i for x in range(len(training_data[i])//batch_size)])
-        random.shuffle(selections) # so we take in a random order
-        #remember a selection of x means training data of length x + 2
-        while len(selections) > 0:
-            array_index = selections.pop()
-            startval = pointers[array_index]
-            endval = startval + batch_size
-            batch = training_data[array_index][startval:endval,:]
-            encoded_batch = EncodeCharVecsToTrainingArray(batch,end_index)
-            features = encoded_batch[:,:-1,:]
-            labels = encoded_batch[:,-1,:]
-            yield (features,labels)
-            pointers[array_index] = endval
-        #When you fall off the end of the inner while loop the outer loop restarts 
-        #and everything is set back up again
-        print('\n\nGenerator resetting! This will take a couple of seconds...\n')
+	while True:
+		print('Generator thread launching...')
+		selections = []
+		pointers = [0 for length_group in training_data]
+		for i in range(len(training_data)):
+			random.shuffle(training_data[i])
+			selections.extend([i for x in range(len(training_data[i])//batch_size)])
+		random.shuffle(selections) # so we take in a random order
+		#remember a selection of x means training data of length x + 2
+		counter = 0
+		while len(selections) > 0:
+			array_index = selections.pop()
+			startval = pointers[array_index]
+			endval = startval + batch_size
+			batch = training_data[array_index][startval:endval,:]
+			encoded_batch = EncodeCharVecsToTrainingArray(batch,end_index)
+			features = encoded_batch[:,:-1,:]
+			labels = encoded_batch[:,-1,:]
+			#yield (features,labels)
+			output_queue.put((features,labels))
+			pointers[array_index] = endval
+		#When you fall off the end of the inner while loop the outer loop restarts 
+		#and everything is set back up again
+		print('\n\nGenerator resetting! This will take a couple of seconds...\n')
         
         
 def OnlineTaglineGenerator(training_data,char_to_index,end_index):
@@ -92,36 +98,66 @@ def OnlineTaglineGenerator(training_data,char_to_index,end_index):
             yield [[movie_input,tagline_input],tagline_label]
         print('\n\nGenerator resetting! This will take a couple of seconds...\n')
         
-def BatchedTaglineGenerator(nested_training_data,batch_size,char_to_index,end_index):
-    #First we do a bit of flattening
-    training_data = []
-    for title_length_bin in nested_training_data:
-        for tagline_chop_length_bin in title_length_bin:
-            training_data.append[tagline_chop_length_bin]
-    while True:
-        selections = []
-        pointers = [0 for length_group in training_data]
-        for i in range(len(training_data)):
-            random.shuffle(training_data[i])
-            selections.extend([i for x in range(len(training_data[i])//batch_size)])
-        random.shuffle(selections) # so we take in a random order
-        #remember a selection of x means training data of length x + 2
-        while len(selections) > 0:
-            array_index = selections.pop()
-            startval = pointers[array_index]
-            endval = startval + batch_size
-            batch = zip(training_data[array_index][startval:endval,:])
-            #after zip batch[0] is a title vector and batch[1] is a tagline vector
-            encoded_titles = EncodeCharVecsToTrainingArray(batch[0],end_index)
-            encoded_taglines = EncodeCharVecsToTrainingArray(batch[1],end_index)
-            tagline_features = encoded_taglines[:,:-1,:]
-            tagline_labels = encoded_taglines[:,-1,:]
-            pdb.set_trace()
-            yield ([encoded_titles,tagline_features],tagline_labels)
-            pointers[array_index] = endval
-        #When you fall off the end of the inner while loop the outer loop restarts 
-        #and everything is set back up again
-        print('\n\nGenerator resetting! This will take a couple of seconds...\n')
-    
-        
-    
+def BatchedTaglineGenerator(training_data,batch_size,char_to_index,index_to_char,end_index,left_padding=False):
+	while True:
+		selections = []
+		pointers = [0 for length_group in training_data]
+		for i in range(len(training_data)):
+			permutation = np.random.permutation(len(training_data[i][0]))
+			training_data[i][0] = training_data[i][0][permutation,:]
+			training_data[i][1] = training_data[i][1][permutation,:]
+			selections.extend([i for x in range(len(training_data[i][0])//batch_size)])
+		random.shuffle(selections) # so we take in a random order
+		#remember a selection of x means training data of length x + 2
+		counter = 0
+		while len(selections) > 0:
+			array_index = selections.pop()
+			startval = pointers[array_index]
+			endval = startval + batch_size
+			training_titles = training_data[array_index][0][startval:endval,:]
+			training_taglines = training_data[array_index][1][startval:endval,:]
+			counter+=1
+			#if counter%100 == 0:
+			#	index_to_char[end_index]='[END]'
+			#	printable_title = ''.join([index_to_char[index] for index in training_titles[12,:].tolist()])
+			#	printable_tagline = ''.join([index_to_char[index] for index in training_taglines[12,:].tolist()])
+			#	print('\nDebug title: {}'.format(printable_title))
+			#	print('Debug tagline: {}'.format(printable_tagline))
+			#Note: Because both taglines and titles can have differing lengths we may not want
+			#to have a separate list for every tagline_length and title_length combo
+			
+			#An alternative is for titles to be padded to the nearest multiple of 5 characters and truncated at 30
+			#characters. This means there will only be 6 title_length bins instead of 30 or more.
+			
+			#The left-padding is done with an index one greater than the special end_index, 
+			#which is normally the highest index. When one-hot encoded, the padding characters will therefore
+			#cause 1s at the positions [sample,timestep,end_index+1], where the array has dimensions
+			#[num_samples,num_timesteps,end_index+1]
+			
+			#At this point we can simply truncate the matrix to [:,:,:end_index] to remove the padding characters,
+			#resulting in all-zeros input to the RNN at that point.
+			if left_padding:
+				encoded_titles = EncodeCharVecsToTrainingArray(training_titles,end_index+1)[:,:,:-1]
+			else:
+				encoded_titles = EncodeCharVecsToTrainingArray(training_titles,end_index)
+			encoded_taglines = EncodeCharVecsToTrainingArray(training_taglines,end_index)
+			tagline_features = encoded_taglines[:,:-1,:]
+			if tagline_features.shape[1]==0:
+				tagline_features = np.zeros_like(encoded_taglines)
+			tagline_labels = encoded_taglines[:,-1,:]
+			yield ([encoded_titles,tagline_features],tagline_labels)
+			#yield ([tagline_features,tagline_labels])
+			pointers[array_index] = endval
+		#When you fall off the end of the inner while loop the outer loop restarts 
+		#and everything is set back up again
+		print('\n\nGenerator resetting! This will take a couple of seconds...\n')
+
+def BufferedGenerator(training_data,batch_size,char_to_index,index_to_char,end_index,num_jobs=2):
+	thread_list = []
+	q = Queue(maxsize=256)
+	for i in range(num_jobs):
+		thread_list.append(Thread(target=TitleBatchGenerator, args=(deepcopy(training_data),batch_size,char_to_index,index_to_char,end_index,q)))
+		thread_list[-1].start()
+	while True:
+		yield q.get()
+	

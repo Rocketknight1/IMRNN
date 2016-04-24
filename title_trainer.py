@@ -12,10 +12,13 @@ from keras.models import Sequential
 from keras.layers.core import Dense, Activation, Dropout
 from keras.layers.recurrent import LSTM
 from keras.layers.advanced_activations import PReLU, ELU, SReLU
-from training_functions import GetSamplesPerEpoch,ChooseCharacter,BatchGenerator
+from keras.layers.normalization import BatchNormalization
+from keras.layers.wrappers import TimeDistributed
+from keras.callbacks import ModelCheckpoint
+from training_functions import GetSamplesPerEpoch,ChooseCharacter,BufferedGenerator
         
 #Reminder, dimensions go (samples,timesteps,characters)
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 MAX_LEN = 12
 TITLE_FILE = 'languages_crop'
 TAGLINES_FILE = 'taglines_crop'
@@ -30,21 +33,26 @@ end_index = max(index_to_char.keys())+1
 training_titles, titles = MakeTitleTraining(MAX_LEN,TITLE_FILE,ALLOWED_CHARS,char_to_index,end_index)
 
 first_char_probs = MakeFirstCharDistribution(titles,index_to_char)
-generator = BatchGenerator(training_titles,BATCH_SIZE,char_to_index,end_index)
+generator = BufferedGenerator(training_titles,BATCH_SIZE,char_to_index,index_to_char,end_index)
 samples_per_epoch = GetSamplesPerEpoch(training_titles,BATCH_SIZE)
 num_chars = end_index + 1
 
 model = Sequential()
-model.add(LSTM(256, return_sequences=True,input_dim=num_chars))
-model.add(LSTM(512, return_sequences=False))
-model.add(Dense(1024,init='he_normal'))
-model.add(PReLU())
+model.add(LSTM(256, return_sequences=True,input_dim=num_chars,activation='linear'))
+model.add(TimeDistributed(SReLU()))
+model.add(LSTM(512, return_sequences=True,activation='linear'))
+model.add(TimeDistributed(SReLU()))
+model.add(LSTM(1024, return_sequences=False,activation='linear'))
+model.add(SReLU())
+model.add(Dense(2048,init='he_normal'))
+model.add(SReLU())
 model.add(Dense(num_chars))
 model.add(Activation('softmax'))
 
 model.compile(loss='categorical_crossentropy', optimizer='Adam')
+checkpointer = ModelCheckpoint(filepath='titleweights.hdf5',verbose=1,save_best_only=False)
 while True:
-    model.fit_generator(generator,samples_per_epoch=65536,nb_epoch=1)
+    model.fit_generator(generator,samples_per_epoch=262144,nb_epoch=1,callbacks=[checkpointer])
     generated = index_to_char[ChooseCharacter(first_char_probs)]
     #Now to test a prediction from it
     while True:
@@ -54,7 +62,7 @@ while True:
             input[0,i-input_index_offset,char_to_index[generated[i]]]=1
         prediction = model.predict(input,batch_size=1,verbose=0)
         nextindex = ChooseCharacter(prediction[0])
-        if nextindex == end_index:
+        if nextindex == end_index or len(generated) == 40:
             break
         nextchar = index_to_char[nextindex]
         generated = generated + nextchar
