@@ -62,7 +62,7 @@ while True:
             input[0,i-input_index_offset,char_to_index[generated[i]]]=1
         prediction = model.predict(input,batch_size=1,verbose=0)
         nextindex = ChooseCharacter(prediction[0])
-        if nextindex == end_index or len(generated) == 40:
+        if nextindex == end_index or len(generated) == 200:
             break
         nextchar = index_to_char[nextindex]
         generated = generated + nextchar
