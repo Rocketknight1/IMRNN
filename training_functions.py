@@ -14,7 +14,7 @@ def GetSamplesPerEpoch(training_data, batch_size):
         usable_total+=(array.shape[0] // batch_size) * batch_size
         total+=len(array)
     print("{} samples total, {} per epoch.".format(total,usable_total))
-    return total
+    return usable_total
 
 def ChooseCharacter(prediction):
     #Softmax layers output probabilities
@@ -46,7 +46,7 @@ def EncodeSingleCharVec(charvec,end_index):
     output[np.arange(num_timesteps),charvec]=1
     return output.reshape(1,num_timesteps,end_index+1)
 
-def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end_index,output_queue):
+def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end_index,output_queue=False):
     #The job of the batch generator is a little tricky
     #We want it to return batches that come from the same training array, since 
     #all training cases in the same array have the same length, and we can't mix lengths
@@ -62,7 +62,6 @@ def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end
     #elements from the corresponding array, starting at the pointer, and yield them. 
     #Increment the pointer on that array by batch_size.
 	while True:
-		print('Generator thread launching...')
 		selections = []
 		pointers = [0 for length_group in training_data]
 		for i in range(len(training_data)):
@@ -76,11 +75,14 @@ def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end
 			startval = pointers[array_index]
 			endval = startval + batch_size
 			batch = training_data[array_index][startval:endval,:]
+			counter+=1
+			if counter%1000 == 0:
+				debugoutput = ''.join([index_to_char[index] for index in list(batch[0,:])])
+				print('Debug: {}'.format(debugoutput))
 			encoded_batch = EncodeCharVecsToTrainingArray(batch,end_index)
 			features = encoded_batch[:,:-1,:]
 			labels = encoded_batch[:,-1,:]
-			#yield (features,labels)
-			output_queue.put((features,labels))
+			yield (features,labels)
 			pointers[array_index] = endval
 		#When you fall off the end of the inner while loop the outer loop restarts 
 		#and everything is set back up again
