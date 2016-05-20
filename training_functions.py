@@ -46,7 +46,7 @@ def EncodeSingleCharVec(charvec,end_index):
     output[np.arange(num_timesteps),charvec]=1
     return output.reshape(1,num_timesteps,end_index+1)
 
-def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end_index,output_queue=False):
+def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end_index):
     #The job of the batch generator is a little tricky
     #We want it to return batches that come from the same training array, since 
     #all training cases in the same array have the same length, and we can't mix lengths
@@ -61,11 +61,12 @@ def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end
     #3: Shuffle the selection list and repeatedly pop from it. Each time you pop an index, take batch_size
     #elements from the corresponding array, starting at the pointer, and yield them. 
     #Increment the pointer on that array by batch_size.
+	print('Spawning...')
 	while True:
 		selections = []
 		pointers = [0 for length_group in training_data]
 		for i in range(len(training_data)):
-			random.shuffle(training_data[i])
+			np.random.shuffle(training_data[i])
 			selections.extend([i for x in range(len(training_data[i])//batch_size)])
 		random.shuffle(selections) # so we take in a random order
 		#remember a selection of x means training data of length x + 2
@@ -75,10 +76,11 @@ def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end
 			startval = pointers[array_index]
 			endval = startval + batch_size
 			batch = training_data[array_index][startval:endval,:]
-			counter+=1
-			if counter%1000 == 0:
-				debugoutput = ''.join([index_to_char[index] for index in list(batch[0,:])])
-				print('Debug: {}'.format(debugoutput))
+			#counter+=1
+			#if counter%100 == 0:
+			#	index_to_char[end_index]='*'
+			#	debugoutput = ''.join([index_to_char[index] for index in list(batch[0,:])])
+			#	print(' Debug: {}'.format(debugoutput))
 			encoded_batch = EncodeCharVecsToTrainingArray(batch,end_index)
 			features = encoded_batch[:,:-1,:]
 			labels = encoded_batch[:,-1,:]
@@ -88,7 +90,16 @@ def TitleBatchGenerator(training_data,batch_size,char_to_index,index_to_char,end
 		#and everything is set back up again
 		print('\n\nGenerator resetting! This will take a couple of seconds...\n')
         
-        
+def MakeTrainingAndValidationSets(training_titles):
+	training_data = []
+	validation_data = []
+	for i in range(len(training_titles)):
+		np.random.shuffle(training_titles[i])
+		splitpoint = training_titles[i].shape[0]*0.75
+		training_data.append(training_titles[i][:splitpoint,:])
+		validation_data.append(training_titles[i][splitpoint:,:])
+	return (training_data,validation_data)
+		
 def OnlineTaglineGenerator(training_data,char_to_index,end_index):
     while True:
         random.shuffle(training_data)
@@ -153,13 +164,19 @@ def BatchedTaglineGenerator(training_data,batch_size,char_to_index,index_to_char
 		#When you fall off the end of the inner while loop the outer loop restarts 
 		#and everything is set back up again
 		print('\n\nGenerator resetting! This will take a couple of seconds...\n')
-
-def BufferedGenerator(training_data,batch_size,char_to_index,index_to_char,end_index,num_jobs=2):
-	thread_list = []
-	q = Queue(maxsize=256)
-	for i in range(num_jobs):
-		thread_list.append(Thread(target=TitleBatchGenerator, args=(deepcopy(training_data),batch_size,char_to_index,index_to_char,end_index,q)))
-		thread_list[-1].start()
+		
+def GenerateTitle(model,MAX_LEN,first_char_probs,index_to_char,char_to_index,num_chars,end_index):
+	generated = index_to_char[ChooseCharacter(first_char_probs)]
+	#Now to test a prediction from it
 	while True:
-		yield q.get()
+		input = np.zeros((1,min(len(generated),MAX_LEN),num_chars),dtype=np.bool)
+		input_index_offset = max(0,len(generated)-MAX_LEN)
+		for i in range(max(0,len(generated)-MAX_LEN),len(generated)):
+			input[0,i-input_index_offset,char_to_index[generated[i]]]=1
+		prediction = model.predict(input,batch_size=1,verbose=0)
+		nextindex = ChooseCharacter(prediction[0])
+		if nextindex == end_index or len(generated) == 200:
+			return generated
+		nextchar = index_to_char[nextindex]
+		generated = generated + nextchar
 	
