@@ -4,10 +4,7 @@ import tweepy
 import subprocess
 import pdb
 import os
-
-#This script needs a consumer key, consumer secret, access key and access secret from Twitter.
-#Since this isn't really mission-critical high-security stuff it just reads them from a text file
-#with one key per line, in the order they're listed above.
+import sys
 
 def PopTitle(filename):
 	#With credit to Saqib on Stackoverflow for this efficient way to pop lines from a file
@@ -25,8 +22,16 @@ def PopTitle(filename):
 			file.truncate()
 	return output
 
+#This script needs a consumer key, consumer secret, access key and access secret from Twitter.
+#Since this isn't really mission-critical high-security stuff it just reads them from a text file
+#with one key per line, in the order they're listed above.
 
-with open('tokens.txt') as f:
+MAX_LEN=12
+TITLE_FILE = 'titles.txt'
+TOKENS_FILE = 'tokens.txt'
+
+
+with open(TOKENS_FILE) as f:
 	tokens = f.read().rstrip().split('\n')
 	consumer_key, consumer_secret, access_key, access_secret = tokens
 
@@ -34,5 +39,10 @@ auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
 auth.set_access_token(access_key, access_secret)
 
 api = tweepy.API(auth)
-title = PopTitle('titles.txt').lstrip().rstrip()
+try:
+	title = PopTitle(TITLE_FILE).lstrip().rstrip()
+	assert(len(title) > 0)
+except:
+	raise
+	
 api.update_status('Movie idea: {}'.format(title))

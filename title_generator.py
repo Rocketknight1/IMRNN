@@ -26,26 +26,31 @@ def TitleCase(generated):
 				words[i]=''.join(letters)
 	return ' '.join(words)
 
-target_folder = sys.argv[1]
-if not target_folder[-1]=='/':
-	target_folder = target_folder+'/'
-	
-MAX_LEN = 12
-#oh god here comes the inelegant part
-#no-one saw that okay
+def ExtendTitlesFile(max_len, target_folder,title_file):
+	if not target_folder[-1] == '/':
+		target_folder = target_folder+'/'
+	char_to_index, index_to_char, first_char_probs = pickle.load(open(target_folder+'indices.pickle','rb'))
+	end_index = max(index_to_char.keys())+1
+	num_chars = end_index + 1
+	model = model_from_json(open(target_folder+'model.json').read())
+	model.load_weights(target_folder+'weights.h5')
+	while True:
+		generated = GenerateTitle(model,MAX_LEN,first_char_probs,index_to_char,char_to_index,num_chars,end_index)
+		generated = TitleCase(generated)
+		print('Title: {}'.format(generated))
+		titles.append(generated)
+	with open('titles.txt','w') as f:
+		f.write('\n'.join(titles))
 
-char_to_index, index_to_char, first_char_probs = pickle.load(open(target_folder+'indices.pickle','rb'))
-end_index = max(index_to_char.keys())+1
-num_chars = end_index + 1
+if __name__ == '__main__':
+	target_folder = sys.argv[1]
+	MAX_LEN = 12
+	title_file = 'titles.txt'
+	ExtendTitlesFile(MAX_LEN, target_folder, title_file)
 
-model = model_from_json(open(target_folder+'model.json').read())
-model.load_weights(target_folder+'weights.h5')
 
-f = open('titles.txt','w')
 
-while True:
-	generated = GenerateTitle(model,MAX_LEN,first_char_probs,index_to_char,char_to_index,num_chars,end_index)
-	generated = TitleCase(generated)
-	print('Title: {}'.format(generated))
-	f.write(generated)
-	f.write('\n')
+
+
+
+

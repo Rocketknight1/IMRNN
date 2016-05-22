@@ -100,70 +100,70 @@ def MakeTrainingAndValidationSets(training_titles):
 		validation_data.append(training_titles[i][splitpoint:,:])
 	return (training_data,validation_data)
 		
-def OnlineTaglineGenerator(training_data,char_to_index,end_index):
-    while True:
-        random.shuffle(training_data)
-        for training_case in training_data:
-            movie_input = EncodeSingleCharVec(training_case[0],end_index)
-            tagline = EncodeSingleCharVec(training_case[1],end_index)
-            tagline_input = tagline[:,:-1,:]
-            tagline_label = tagline[:,-1,:]
-            yield [[movie_input,tagline_input],tagline_label]
-        print('\n\nGenerator resetting! This will take a couple of seconds...\n')
+#def OnlineTaglineGenerator(training_data,char_to_index,end_index):
+#    while True:
+#        random.shuffle(training_data)
+#        for training_case in training_data:
+#            movie_input = EncodeSingleCharVec(training_case[0],end_index)
+#            tagline = EncodeSingleCharVec(training_case[1],end_index)
+#            tagline_input = tagline[:,:-1,:]
+#            tagline_label = tagline[:,-1,:]
+#            yield [[movie_input,tagline_input],tagline_label]
+#        print('\n\nGenerator resetting! This will take a couple of seconds...\n')
         
-def BatchedTaglineGenerator(training_data,batch_size,char_to_index,index_to_char,end_index,left_padding=False):
-	while True:
-		selections = []
-		pointers = [0 for length_group in training_data]
-		for i in range(len(training_data)):
-			permutation = np.random.permutation(len(training_data[i][0]))
-			training_data[i][0] = training_data[i][0][permutation,:]
-			training_data[i][1] = training_data[i][1][permutation,:]
-			selections.extend([i for x in range(len(training_data[i][0])//batch_size)])
-		random.shuffle(selections) # so we take in a random order
-		#remember a selection of x means training data of length x + 2
-		counter = 0
-		while len(selections) > 0:
-			array_index = selections.pop()
-			startval = pointers[array_index]
-			endval = startval + batch_size
-			training_titles = training_data[array_index][0][startval:endval,:]
-			training_taglines = training_data[array_index][1][startval:endval,:]
-			counter+=1
-			#if counter%100 == 0:
-			#	index_to_char[end_index]='[END]'
-			#	printable_title = ''.join([index_to_char[index] for index in training_titles[12,:].tolist()])
-			#	printable_tagline = ''.join([index_to_char[index] for index in training_taglines[12,:].tolist()])
-			#	print('\nDebug title: {}'.format(printable_title))
-			#	print('Debug tagline: {}'.format(printable_tagline))
-			#Note: Because both taglines and titles can have differing lengths we may not want
-			#to have a separate list for every tagline_length and title_length combo
-			
-			#An alternative is for titles to be padded to the nearest multiple of 5 characters and truncated at 30
-			#characters. This means there will only be 6 title_length bins instead of 30 or more.
-			
-			#The left-padding is done with an index one greater than the special end_index, 
-			#which is normally the highest index. When one-hot encoded, the padding characters will therefore
-			#cause 1s at the positions [sample,timestep,end_index+1], where the array has dimensions
-			#[num_samples,num_timesteps,end_index+1]
-			
-			#At this point we can simply truncate the matrix to [:,:,:end_index] to remove the padding characters,
-			#resulting in all-zeros input to the RNN at that point.
-			if left_padding:
-				encoded_titles = EncodeCharVecsToTrainingArray(training_titles,end_index+1)[:,:,:-1]
-			else:
-				encoded_titles = EncodeCharVecsToTrainingArray(training_titles,end_index)
-			encoded_taglines = EncodeCharVecsToTrainingArray(training_taglines,end_index)
-			tagline_features = encoded_taglines[:,:-1,:]
-			if tagline_features.shape[1]==0:
-				tagline_features = np.zeros_like(encoded_taglines)
-			tagline_labels = encoded_taglines[:,-1,:]
-			yield ([encoded_titles,tagline_features],tagline_labels)
-			#yield ([tagline_features,tagline_labels])
-			pointers[array_index] = endval
-		#When you fall off the end of the inner while loop the outer loop restarts 
-		#and everything is set back up again
-		print('\n\nGenerator resetting! This will take a couple of seconds...\n')
+#def BatchedTaglineGenerator(training_data,batch_size,char_to_index,index_to_char,end_index,left_padding=False):
+#	while True:
+#		selections = []
+#		pointers = [0 for length_group in training_data]
+#		for i in range(len(training_data)):
+#			permutation = np.random.permutation(len(training_data[i][0]))
+#			training_data[i][0] = training_data[i][0][permutation,:]
+#			training_data[i][1] = training_data[i][1][permutation,:]
+#			selections.extend([i for x in range(len(training_data[i][0])//batch_size)])
+#		random.shuffle(selections) # so we take in a random order
+#		#remember a selection of x means training data of length x + 2
+#		counter = 0
+#		while len(selections) > 0:
+#			array_index = selections.pop()
+#			startval = pointers[array_index]
+#			endval = startval + batch_size
+#			training_titles = training_data[array_index][0][startval:endval,:]
+#			training_taglines = training_data[array_index][1][startval:endval,:]
+#			counter+=1
+#			#if counter%100 == 0:
+#			#	index_to_char[end_index]='[END]'
+#			#	printable_title = ''.join([index_to_char[index] for index in training_titles[12,:].tolist()])
+#			#	printable_tagline = ''.join([index_to_char[index] for index in training_taglines[12,:].tolist()])
+#			#	print('\nDebug title: {}'.format(printable_title))
+#			#	print('Debug tagline: {}'.format(printable_tagline))
+#			#Note: Because both taglines and titles can have differing lengths we may not want
+#			#to have a separate list for every tagline_length and title_length combo
+#			
+#			#An alternative is for titles to be padded to the nearest multiple of 5 characters and truncated at 30
+#			#characters. This means there will only be 6 title_length bins instead of 30 or more.
+#			
+#			#The left-padding is done with an index one greater than the special end_index, 
+#			#which is normally the highest index. When one-hot encoded, the padding characters will therefore
+#			#cause 1s at the positions [sample,timestep,end_index+1], where the array has dimensions
+#			#[num_samples,num_timesteps,end_index+1]
+#			
+#			#At this point we can simply truncate the matrix to [:,:,:end_index] to remove the padding characters,
+#			#resulting in all-zeros input to the RNN at that point.
+#			if left_padding:
+#				encoded_titles = EncodeCharVecsToTrainingArray(training_titles,end_index+1)[:,:,:-1]
+#			else:
+#				encoded_titles = EncodeCharVecsToTrainingArray(training_titles,end_index)
+#			encoded_taglines = EncodeCharVecsToTrainingArray(training_taglines,end_index)
+#			tagline_features = encoded_taglines[:,:-1,:]
+#			if tagline_features.shape[1]==0:
+#				tagline_features = np.zeros_like(encoded_taglines)
+#			tagline_labels = encoded_taglines[:,-1,:]
+#			yield ([encoded_titles,tagline_features],tagline_labels)
+#			#yield ([tagline_features,tagline_labels])
+#			pointers[array_index] = endval
+#		#When you fall off the end of the inner while loop the outer loop restarts 
+#		#and everything is set back up again
+#		print('\n\nGenerator resetting! This will take a couple of seconds...\n')
 		
 def GenerateTitle(model,MAX_LEN,first_char_probs,index_to_char,char_to_index,num_chars,end_index):
 	generated = index_to_char[ChooseCharacter(first_char_probs)]

@@ -48,10 +48,10 @@ num_chars = end_index + 1
 model = Sequential()
 model.add(LSTM(1024, return_sequences=True,input_dim=num_chars))
 #model.add(TimeDistributed(SReLU()))
-model.add(LSTM(1024, return_sequences=False))
+model.add(LSTM(1024, return_sequences=True))
 #model.add(TimeDistributed(SReLU()))
-model.add(Dense(1024,init='he_normal'))
-model.add(Dropout(0.5))
+model.add(LSTM(1024, return_sequences=False))
+model.add(Dense(2048,init='he_normal'))
 model.add(SReLU())
 model.add(Dense(num_chars))
 model.add(Activation('softmax'))
@@ -65,8 +65,8 @@ while True:
 	callback = model.fit_generator(training_generator,validation_data=validation_generator,samples_per_epoch=327680,nb_val_samples=131072,nb_epoch=1,max_q_size=50)
 	loss = float(callback.history['loss'][0])
 	val_loss = float(callback.history['val_loss'][0])
-	if val_loss < lowest_loss - 0.05:
-		weightfolder = 'savedmodels/titletraining_weightsatloss_{0:.2f}'.format(val_loss)
+	if loss < lowest_loss - 0.02:
+		weightfolder = 'savedmodels/titletraining_weightsatloss_{0:.2f}'.format(loss)
 		if not os.path.isdir(weightfolder):
 			os.makedirs(weightfolder)
 		print('Saving {}/weights.h5'.format(weightfolder))
@@ -75,7 +75,7 @@ while True:
 		picklefile = open(weightfolder+'/indices.pickle','wb')
 		pickle.dump((char_to_index,index_to_char,first_char_probs),picklefile)
 		picklefile.close()
-		lowest_loss = val_loss
+		lowest_loss = loss
 	generated = GenerateTitle(model,MAX_LEN,first_char_probs,index_to_char,char_to_index,num_chars,end_index)
     
 	print('Title: {}'.format(generated.title()))
