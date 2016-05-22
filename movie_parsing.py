@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 import pdb,sys
 import numpy as np
 import pickle

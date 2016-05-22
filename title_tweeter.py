@@ -6,6 +6,13 @@ import pdb
 import os
 import sys
 
+#This ensures that the working directory is set to the script's directory
+#saving me the very minor hassle of dealing with absolute paths when this is run
+#by cron
+abspath = os.path.abspath(__file__)
+dname = os.path.dirname(abspath)
+os.chdir(dname)
+
 def PopTitle(filename):
 	#With credit to Saqib on Stackoverflow for this efficient way to pop lines from a file
 	#without rewriting the whole thing
