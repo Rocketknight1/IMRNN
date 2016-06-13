@@ -8,7 +8,7 @@ A simple-ish Twitter bot and recurrent neural network (RNN) script that learns t
 I wanted to play with character-generation RNNs. Also sometimes it's extremely hilarious.
 
 ##Why do lots of the movie ideas feel like porn?
-There's an awful lot of it in the IMDB database.
+There's an awful lot of it in the IMDB database. I considered censoring it, but I felt that would defeat the point of the social experiment.
 
 ##What's your favourite movie title from it so far?
 "Demons & Boyfriends". I think I might legit be able to sell that idea to someone.
